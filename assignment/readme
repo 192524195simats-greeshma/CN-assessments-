@@ -1,1 +1,353 @@
+import networkx as nx
+import random
+import statistics
 
+# ============================================================
+# SMART HEALTHCARE COMMUNICATION NETWORK
+# ============================================================
+
+NUM_DEVICES = 40
+TRIALS = 10
+
+
+# ------------------------------------------------------------
+# 1. CREATE HOSPITAL ZONES
+# ------------------------------------------------------------
+
+zones = {
+    "Patient Monitoring": 10,
+    "Medical Records": 10,
+    "Laboratory": 10,
+    "Pharmacy & Emergency": 10
+}
+
+
+# ------------------------------------------------------------
+# 2. CREATE TOPOLOGIES
+# ------------------------------------------------------------
+
+def create_star():
+    G = nx.Graph()
+    G.add_node("SW1")
+
+    for i in range(1, NUM_DEVICES + 1):
+        G.add_edge("SW1", f"D{i}")
+
+    return G
+
+
+def create_bus():
+    G = nx.Graph()
+
+    for i in range(1, NUM_DEVICES):
+        G.add_edge(f"D{i}", f"D{i+1}")
+
+    return G
+
+
+def create_mesh():
+    G = nx.Graph()
+
+    for i in range(1, NUM_DEVICES + 1):
+        G.add_node(f"D{i}")
+
+    for i in range(1, NUM_DEVICES + 1):
+        for j in range(i + 1, NUM_DEVICES + 1):
+            if random.random() < 0.15:
+                G.add_edge(f"D{i}", f"D{j}")
+
+    return G
+
+
+def create_hybrid():
+    G = nx.Graph()
+
+    # Four departmental switches
+    switches = ["SW1", "SW2", "SW3", "SW4"]
+
+    # Connect switches using redundant links
+    G.add_edges_from([
+        ("SW1", "SW2"),
+        ("SW2", "SW3"),
+        ("SW3", "SW4"),
+        ("SW4", "SW1"),
+        ("SW1", "SW3")
+    ])
+
+    # Connect 10 devices to each switch
+    device = 1
+
+    for sw in switches:
+        for _ in range(10):
+            G.add_edge(sw, f"D{device}")
+            device += 1
+
+    return G
+
+
+# ------------------------------------------------------------
+# 3. PERFORMANCE SIMULATION
+# ------------------------------------------------------------
+
+def simulate_network(G, scenario, protocol):
+
+    if scenario == "Normal":
+        traffic = 0.30
+
+    elif scenario == "Peak Monitoring":
+        traffic = 0.75
+
+    elif scenario == "Congestion":
+        traffic = 0.95
+
+    else:
+        traffic = 0.50
+
+    # Protocol characteristics
+    if protocol == "TCP":
+        reliability = 0.98
+        protocol_delay = 12
+
+    elif protocol == "UDP":
+        reliability = 0.92
+        protocol_delay = 5
+
+    elif protocol == "HTTP":
+        reliability = 0.96
+        protocol_delay = 15
+
+    elif protocol == "FTP":
+        reliability = 0.97
+        protocol_delay = 20
+
+    elif protocol == "DNS":
+        reliability = 0.99
+        protocol_delay = 8
+
+    else:  # ICMP
+        reliability = 0.99
+        protocol_delay = 4
+
+    # Topology effect
+    if nx.is_connected(G):
+        path_length = nx.average_shortest_path_length(G)
+    else:
+        path_length = 10
+
+    # Calculate metrics
+    delay = (
+        protocol_delay
+        + path_length * 2
+        + traffic * 20
+        + random.uniform(1, 5)
+    )
+
+    packet_loss = (
+        (traffic * 8)
+        + ((path_length / 10) * 2)
+        + random.uniform(0, 2)
+    )
+
+    packet_loss *= (1 - reliability + 0.2)
+
+    pdr = max(0, 100 - packet_loss)
+
+    throughput = (
+        100 * (1 - traffic * 0.35)
+        * (pdr / 100)
+        + random.uniform(-3, 3)
+    )
+
+    jitter = (
+        random.uniform(1, 5)
+        + traffic * 8
+    )
+
+    response_time = delay + random.uniform(2, 8)
+
+    bandwidth = min(
+        100,
+        traffic * 100 + random.uniform(-5, 5)
+    )
+
+    return {
+        "Throughput": round(throughput, 2),
+        "Packet Loss": round(packet_loss, 2),
+        "PDR": round(pdr, 2),
+        "Delay": round(delay, 2),
+        "Jitter": round(jitter, 2),
+        "Response Time": round(response_time, 2),
+        "Bandwidth Utilization": round(bandwidth, 2)
+    }
+
+
+# ------------------------------------------------------------
+# 4. RUN MULTIPLE TRIALS
+# ------------------------------------------------------------
+
+topologies = {
+    "Star": create_star(),
+    "Bus": create_bus(),
+    "Mesh": create_mesh(),
+    "Hybrid": create_hybrid()
+}
+
+protocols = [
+    "TCP",
+    "UDP",
+    "HTTP",
+    "FTP",
+    "DNS",
+    "ICMP"
+]
+
+scenarios = [
+    "Normal",
+    "Peak Monitoring",
+    "Congestion"
+]
+
+
+results = []
+
+
+for topology_name, network in topologies.items():
+
+    for scenario in scenarios:
+
+        for protocol in protocols:
+
+            trial_results = []
+
+            for _ in range(TRIALS):
+
+                result = simulate_network(
+                    network,
+                    scenario,
+                    protocol
+                )
+
+                trial_results.append(result)
+
+            # Average results
+            avg = {}
+
+            for metric in trial_results[0]:
+
+                values = [
+                    r[metric]
+                    for r in trial_results
+                ]
+
+                avg[metric] = round(
+                    statistics.mean(values), 2
+                )
+
+            results.append({
+                "Topology": topology_name,
+                "Scenario": scenario,
+                "Protocol": protocol,
+                **avg
+            })
+
+
+# ------------------------------------------------------------
+# 5. DISPLAY RESULTS
+# ------------------------------------------------------------
+
+print("\n============================================================")
+print("SMART HEALTHCARE NETWORK PERFORMANCE RESULTS")
+print("============================================================\n")
+
+for r in results:
+
+    print(
+        f"{r['Topology']:8} | "
+        f"{r['Scenario']:18} | "
+        f"{r['Protocol']:5} | "
+        f"Throughput: {r['Throughput']:6} Mbps | "
+        f"Loss: {r['Packet Loss']:5}% | "
+        f"PDR: {r['PDR']:5}% | "
+        f"Delay: {r['Delay']:6} ms | "
+        f"Jitter: {r['Jitter']:5} ms"
+    )
+
+
+# ------------------------------------------------------------
+# 6. TOPOLOGY SCORE
+# ------------------------------------------------------------
+
+print("\n============================================================")
+print("TOPOLOGY COMPARISON")
+print("============================================================")
+
+topology_scores = {}
+
+for topology in topologies:
+
+    topology_data = [
+        r for r in results
+        if r["Topology"] == topology
+    ]
+
+    avg_throughput = statistics.mean(
+        r["Throughput"]
+        for r in topology_data
+    )
+
+    avg_pdr = statistics.mean(
+        r["PDR"]
+        for r in topology_data
+    )
+
+    avg_delay = statistics.mean(
+        r["Delay"]
+        for r in topology_data
+    )
+
+    avg_loss = statistics.mean(
+        r["Packet Loss"]
+        for r in topology_data
+    )
+
+    # Higher throughput/PDR is better
+    # Lower delay/loss is better
+
+    score = (
+        avg_throughput
+        + avg_pdr
+        - avg_delay
+        - avg_loss
+    )
+
+    topology_scores[topology] = score
+
+    print(
+        f"{topology:8} -> "
+        f"Score = {score:.2f}"
+    )
+
+
+# ------------------------------------------------------------
+# 7. BEST TOPOLOGY
+# ------------------------------------------------------------
+
+best_topology = max(
+    topology_scores,
+    key=topology_scores.get
+)
+
+print("\n============================================================")
+print("FINAL RECOMMENDATION")
+print("============================================================")
+
+print(
+    f"Recommended Healthcare Network Topology: "
+    f"{best_topology}"
+)
+
+print(
+    "\nReason: The selected topology provides a good balance "
+    "of reliability, scalability, throughput, delay, "
+    "packet delivery and fault tolerance."
+)
